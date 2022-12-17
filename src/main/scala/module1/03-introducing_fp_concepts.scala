@@ -95,6 +95,18 @@ object recursion {
    * F0 = 0, F1 = 1, Fn = Fn-1 + Fn - 2
    *
    */
+  def fibonacci(n : Int) : Int = {
+    def loop(counter: Int, n0: Int, n1: Int) : Int = {
+      if(counter <= 0)    n0 + n1 
+      else loop(counter - 1, n1, n0 + n1)
+    }
+    n match {
+      case 1 => 0
+      case 2 => 1
+      case x if(x > 2) => loop(n-2,0,1)
+      case _ => ???
+    }
+  }
 
 
 }
