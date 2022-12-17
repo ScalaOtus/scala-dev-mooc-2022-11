@@ -246,6 +246,32 @@ object hof{
       case Option.None => Option.None
     }
 
+    /**
+     *
+     * Реализовать метод printIfAny, который будет печатать значение, если оно есть
+     */
+    def printIfAny(): Unit = this match {
+      case Option.Some(v) => println(v)
+      case Option.None => ()
+    }
+
+    /**
+     *
+     * Реализовать метод zip, который будет создавать Option от пары значений из 2-х Option
+     */
+    def zip[B](b: Option[B]) : Option[(T,B)] = (this,b) match {
+      case (Option.Some(va),Option.Some(vb)) => Option.Some((va,vb))
+      case _ => Option.None
+    }
+
+    /**
+     *
+     * Реализовать метод filter, который будет возвращать не пустой Option
+     * в случае если исходный не пуст и предикат от значения = true*/
+      def filter(p: T => Boolean) : Option[T] = this match {
+        case Option.Some(v) if(p(v)) => this
+        case _ => Option.None
+      }
   }
 
 
@@ -261,23 +287,8 @@ object hof{
 
 
 
-  /**
-   *
-   * Реализовать метод printIfAny, который будет печатать значение, если оно есть
-   */
 
 
-  /**
-   *
-   * Реализовать метод zip, который будет создавать Option от пары значений из 2-х Option
-   */
-
-
-  /**
-   *
-   * Реализовать метод filter, который будет возвращать не пустой Option
-   * в случае если исходный не пуст и предикат от значения = true
-   */
 
  }
 
@@ -291,7 +302,68 @@ object hof{
     */
 
    trait List[+T] {
-     def ::[TT >: T](elem: TT): List[TT] = ???
+    def ::[TT >: T](elem: TT): List[TT] = ???
+
+    /**
+       * Метод cons, добавляет элемент в голову списка, для этого метода можно воспользоваться названием `::`
+       *
+       */
+    def cons[B >: T] (head: B) : List[B] = List.::(head,this)
+
+
+    /**
+      * Метод mkString возвращает строковое представление списка, с учетом переданного разделителя
+      *
+      */
+    def mkString(separator : Char) = this match {
+      case List.Nil => "Nil" 
+      case _ => {
+        def loop(l: List[T], acc : String) : String = l match {
+          case List.::(h,List.Nil) => acc + h.toString()
+          case List.::(h,t) => loop(t, acc + h.toString() + f" $separator ")
+          case List.Nil => ""
+        }
+        "List[ " + loop(this,"") + " ]"
+      }
+    }
+
+    /**
+      *
+      * Реализовать метод reverse который позволит заменить порядок элементов в списке на противоположный
+      */
+    def reverse : List[T] = {
+      def loop(l : List[T], result : List[T]) : List[T] = l match {
+        case List.::(h,t) => loop(t,List.::(h,result))
+        case List.Nil => result
+      }
+      loop(this,List())
+    }
+
+    /**
+      *
+      * Реализовать метод map для списка который будет применять некую ф-цию к элементам данного списка
+      */
+    def map[B] (f: T => B) : List[B] = {
+        def loop(l: List[T], acc : List[B]) : List[B] = l match {
+            case List.::(h,t) => loop(t, List.::(f(h),acc))
+            case List.Nil => acc
+        }
+        loop(this,List[B]()).reverse
+    }
+
+    /**
+      *
+      * Реализовать метод filter для списка который будет фильтровать список по некому условию
+      */
+    def filter (p: T => Boolean) : List[T] = {
+        def loop(l: List[T], acc : List[T]) : List[T] = l match {
+            case List.::(h,t) if(p(h)) => loop(t, List.::(h,acc))
+            case List.::(_,t) => loop(t,acc)
+            case List.Nil => acc 
+        }
+        loop(this,List[T]()).reverse
+    }
+
    }
 
    object List {
@@ -300,6 +372,22 @@ object hof{
 
      def apply[A](v: A*): List[A] =
        if(v.isEmpty) Nil else ::(v.head, apply(v.tail:_*))
+
+    /**
+      *
+      * Написать функцию incList котрая будет принимать список Int и возвращать список,
+      * где каждый элемент будет увеличен на 1
+      */
+    def incList(l : List[Int]) : List[Int] = l.map {i => i + 1}
+
+
+    /**
+      *
+      * Написать функцию shoutString котрая будет принимать список String и возвращать список,
+      * где к каждому элементу будет добавлен префикс в виде '!'
+      */
+    def shoutString(l : List[String]) = l.map {s => f"!$s"}
+
    }
 
    List(1, 2, 3)
@@ -308,15 +396,7 @@ object hof{
 
 
 
-   /**
-     * Метод cons, добавляет элемент в голову списка, для этого метода можно воспользоваться названием `::`
-     *
-     */
 
-    /**
-      * Метод mkString возвращает строковое представление списка, с учетом переданного разделителя
-      *
-      */
 
     /**
       * Конструктор, позволяющий создать список из N - го числа аргументов
@@ -324,35 +404,6 @@ object hof{
       * 
       * Например вот этот метод принимает некую последовательность аргументов с типом Int и выводит их на печать
       * def printArgs(args: Int*) = args.foreach(println(_))
-      */
-
-    /**
-      *
-      * Реализовать метод reverse который позволит заменить порядок элементов в списке на противоположный
-      */
-
-    /**
-      *
-      * Реализовать метод map для списка который будет применять некую ф-цию к элементам данного списка
-      */
-
-
-    /**
-      *
-      * Реализовать метод filter для списка который будет фильтровать список по некому условию
-      */
-
-    /**
-      *
-      * Написать функцию incList котрая будет принимать список Int и возвращать список,
-      * где каждый элемент будет увеличен на 1
-      */
-
-
-    /**
-      *
-      * Написать функцию shoutString котрая будет принимать список String и возвращать список,
-      * где к каждому элементу будет добавлен префикс в виде '!'
       */
 
  }
