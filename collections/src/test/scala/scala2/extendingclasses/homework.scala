@@ -1,7 +1,7 @@
 package scala2.extendingclasses
 
 import scala.Extensionmethods.Circle
-
+/*
 object homework1 {
   extension (x: String)
     def + ?????
@@ -56,4 +56,4 @@ object homework3 {
     val l4 = l + l2
 
   }
-}
+}*/
