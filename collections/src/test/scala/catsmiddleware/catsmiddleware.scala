@@ -13,150 +13,144 @@ import org.http4s.implicits._
 import org.http4s.server.{AuthMiddleware, HttpMiddleware, Router}
 import org.typelevel.ci.CIStringSyntax
 import cats.implicits._
-import catsmiddleware.Restfull.User
+import catsmiddleware.Restfull.httpApp
 import org.http4s.LiteralSyntaxMacros.uri
 import org.http4s.implicits.http4sLiteralsSyntax
-
-object  Restfuldesc {
-  // 1. reader если вернуться к ннотации F[_], то reader это функция A=>B где А это фиксирована, а B это та самая дырка
-  //Kleisli позволяет композировать функции, которые возвращают монадическое значение, например, Option[Int]
-  // или Either[String, List[Double]], без того, чтобы функции принимали Option или Both в качестве параметра,
-  // что может быть странным и громоздким. У нас также может быть несколько функций, которые зависят от некоторой среды, и нам нужен хороший
-  // способ скомпозировать эти функции, чтобы гарантировать, что все они получают одну и ту же среду. Или, возможно, у нас есть функции, которые
-  // зависят от их собственной «локальной» конфигурации, и все конфигурации вместе составляют «глобальную» конфигурацию
-  // приложения. Как сделать так, чтобы эти функции хорошо взаимодействовали друг с другом, несмотря на то,
-  // что каждая из них знает только свои локальные требования? Именно в таких ситуациях Клейсли очень помогает.
-
-  //2. middleware
-  // type Middleware[F[_], A, B, C, D] = Kleisli[F, A, B] => Kleisli[F, C, D]
-  AuthMiddleware
-
-}
+import org.http4s.circe.CirceEntityEncoder._
+import org.http4s.circe.CirceEntityDecoder._
 
 object  Restfull {
+  //1
+
   val service: HttpRoutes[IO] =
     HttpRoutes.of {
-      case GET -> Root / "hello" / name => Ok("dsg")
+      case GET -> Root / "hello"/ name => Ok("bla bla bla")
     }
-
-  //правильно декомпозировтаь все роуты на кусочки
-  //тоесть правильно писать какой то шлюз
-  //который в зависимости от адреса перенапрявляет на разные адреса
 
   val serviceOne: HttpRoutes[IO] =
     HttpRoutes.of {
-      case GET -> Root / "hello1" / name => Ok("dsg1")
+      case GET -> Root / "hello1"/ name => Ok("bla1 bla1 bla1")
     }
-
-
   val serviceTwo: HttpRoutes[IO] =
     HttpRoutes.of {
-      case GET -> Root / "hello2" / name => Ok("dsg2")
+      case GET -> Root / "hello2"/ name => Ok("bla2 bla2 bla2")
     }
 
-  //1.
-  val router = addResponseHeaderMiddleware(Router("/" -> addResponseHeaderMiddleware(serviceOne), "/api" -> addResponseHeaderMiddleware(serviceTwo)))
+  //2
+  val routes = addResponseMiddleware(Router("/" -> addResponseMiddleware(serviceOne), "/api" -> addResponseMiddleware(serviceTwo)))
 
-  def routerSessions(sessions: Sessions[IO]) =
-    addResponseHeaderMiddleware(Router("/" -> serviceSessions(sessions)))
+  val httpApp: Http[IO,IO] = service.orNotFound
 
-  def routerSessionsAuth(sessions: Sessions[IO]) =
-    //очень важно, это не коммутативно, нельзя написать наоборот, так как
-    // тут задается порядок создания роутинга и если наоборот то попадем в middleware сначала
-    addResponseHeaderMiddleware(Router("/" -> (LoginService(sessions) <+> serviceAuth(sessions)(serviceHello))))
-
-  def routerSessionsAuthClear(sessions: Sessions[IO]) =
-  //очень важно, это не коммутативно, нельзя написать наоборот, так как
-  // тут задается порядок создания роутинга и если наоборот то попадем в middleware сначала
-    addResponseHeaderMiddleware(Router("/" -> (LoginService(sessions) <+> serviceAuthMiddleware(sessions)(serviceHelloAuth))))
-
-
-  ////////////////////////////добавим middleqware 1. в Taglessfinal
-
-  //спросить и добавить Functor
-  //так как map на OptionT и чтобы map работал надо чтобы F был функтором
-  def addResponseHeaderMiddleware[F[_]: Functor](
-                                       routes: HttpRoutes[F]
-                                       ):HttpRoutes[F] =Kleisli{ req=>
+  val server = for {
+    s <- EmberServerBuilder
+      .default[IO]
+      .withPort(Port.fromInt(8080).get)
+      .withHost(Host.fromString("localhost").get)
+      .withHttpApp(httpApp).build
+  } yield s
+  //2
+  def addResponseMiddleware[F[_]: Functor](
+                                          routes: HttpRoutes[F]
+                                          ): HttpRoutes[F] = Kleisli{
+    req =>
       val maybeResponse = routes(req)
-//    maybeResponse.map(resp => resp.putHeaders("X-Outus" -> "Hello"))
-// или
-    maybeResponse.map{
-      case Status.Successful(resp) => resp.putHeaders("X-Outus" -> "Hello")
-//      case Status.Successful(resp) => resp.putHeaders(`Content-Type`(MediaType.text.csv))
-      case other  => other
-    }
-  } //теперь можем повесить на любой роут
-    // val router = Router("/" -> addResponseHeaderMiddleware(serviceOne), "/api" -> serviceTwo)
+//      maybeResponse.map(resp => resp.putHeaders("X-Otus" -> "Hello"))
 
-    //2. middleware out of box
-    //import org.http4s.server.middleware.
+      maybeResponse.map{
+        case Status.Successful(resp) => resp.putHeaders("X-Otus" -> "Hello")
+        case other => other
+      }
+  }
+  // import org.http4s.server.middleware._
 
-//3. Сессии
-  type Sessions[F[_]]=Ref[F, Set[String]]
-  def serviceSessions(sessions: Sessions[IO]): HttpRoutes[IO] =
-    HttpRoutes.of {
+  val server1 = for {
+    s <- EmberServerBuilder
+      .default[IO]
+      .withPort(Port.fromInt(8080).get)
+      .withHost(Host.fromString("localhost").get)
+      .withHttpApp(routes.orNotFound).build
+  } yield s
+
+  //3. Сессии
+  type Sessions[F[_]] = Ref[F, Set[String]]
+  def serviceSessions(sessions: Sessions[IO]): HttpRoutes[IO]=
+    HttpRoutes.of{
       case r@GET -> Root / "hello" =>
-        //name будет в заголовке
-        r.headers.get(ci"X-User-Name") match {
-          case Some(values) => /*nonemptylist*/
+        r.headers.get(ci"X-User-Name") match{
+          case Some(values) =>
             val name = values.head.value
-            sessions.get.flatMap(users=>
-            if (users.contains(name)) Ok(s"Hello, $name")
-            else Forbidden("You will not pass!!!")
+            sessions.get.flatMap(users =>
+              if (users.contains(name)) Ok(s"Hello, $name")
+              else
+                Forbidden("You shall not pass!!!")
             )
-          case None => Forbidden("You will not pass!!!")
+          case None => Forbidden("You shall not pass!!!")
         }
       case PUT -> Root / "login" / name =>
-        sessions.update(set=>set + name).flatMap(_ => Ok("done"))
+        sessions.update(set => set + name).flatMap( _ => Ok("done"))
     }
+
+  def roterSessions(sessions: Sessions[IO]) =
+    addResponseMiddleware(Router("/" -> serviceSessions(sessions)))
+
+  val serverSessions = for {
+    sessions <- Resource.eval(Ref.of[IO, Set[String]](Set.empty))
+    s <- EmberServerBuilder
+      .default[IO]
+      .withPort(Port.fromInt(8080).get)
+      .withHost(Host.fromString("localhost").get)
+      .withHttpApp(roterSessions(sessions).orNotFound).build
+  } yield s
 
   //4. Auth
   def serviceAuth(sessions: Sessions[IO]): HttpMiddleware[IO] =
     routes =>
-      Kleisli { req =>
-        req.headers.get(ci"X-User-Name") match {
-          case Some(values) => /*nonemptylist*/
-            //чтобы сощлись типы
-            val name = values.head.value
-
-            for {
-              users <- OptionT.liftF(sessions.get)
-              results <-
-                if (users.contains(name)) routes(req)
-                else OptionT.liftF(Forbidden("You will not pass!!!"))
-
-            } yield results
-
-          case None => OptionT.liftF(Forbidden("You will not pass!!!"))
-        }
+    Kleisli{ req =>
+      req.headers.get(ci"X-User-Name") match{
+        case Some(values) =>
+          val name  = values.head.value
+          for{
+            users <- OptionT.liftF(sessions.get)
+            results <-
+              if (users.contains(name)) routes(req)
+              else OptionT.liftF(Forbidden("You shall not pass!!"))
+          } yield results
+        case None => OptionT.liftF(Forbidden("You shall not pass!!"))
       }
-  // теперь разобьем сервис на 2, в первом будет GET с аутентификацией, а второй будет с PUT
+    }
 
   def serviceHello: HttpRoutes[IO] =
     HttpRoutes.of {
       case r@GET -> Root / "hello" =>
-        //name будет в заголовке
         r.headers.get(ci"X-User-Name") match {
-          case Some(values) => /*nonemptylist*/
+          case Some(values) =>
             val name = values.head.value
             Ok(s"Hello, $name")
-          case None => Forbidden("You will not pass!!!")
+          case None =>  Forbidden("You shall not pass!!")
         }
     }
 
-  def LoginService(sessions: Sessions[IO]): HttpRoutes[IO]=
+  def loginService(sessions: Sessions[IO]): HttpRoutes[IO] =
     HttpRoutes.of {
       case PUT -> Root / "login" / name =>
         sessions.update(set => set + name).flatMap(_ => Ok("done"))
     }
 
-  //5. чистовой рефакторинг  AuthMiddleware
-  //роут на который накладываем миддлваре не обычный, а аутентифицированный. тоесть внешний слой передает во внутрь доп данные
+  def routerSessionAuth(sessions: Sessions[IO]) =
+    addResponseMiddleware( Router("/" -> (loginService(sessions) <+> serviceAuth(sessions)(serviceHello))) )
 
+  val serverSessionsAuth = for {
+    sessions <- Resource.eval(Ref.of[IO, Set[String]](Set.empty))
+    s <- EmberServerBuilder
+      .default[IO]
+      .withPort(Port.fromInt(8080).get)
+      .withHost(Host.fromString("localhost").get)
+      .withHttpApp(routerSessionAuth(sessions).orNotFound).build
+  } yield s
+
+  //5 refactoring
   final case class User(name: String)
-
-  def serviceHelloAuth: AuthedRoutes[User, IO] = AuthedRoutes.of{
+  def serviceHelloAuth: AuthedRoutes[User, IO] = AuthedRoutes.of {
     case GET -> Root / "hello" as user =>
       Ok(s"Hello, ${user.name}")
   }
@@ -165,106 +159,69 @@ object  Restfull {
     autherRoutes =>
       Kleisli { req =>
         req.headers.get(ci"X-User-Name") match {
-          case Some(values) => /*nonemptylist*/
-            //чтобы сощлись типы
+          case Some(values) =>
             val name = values.head.value
 
             for {
               users <- OptionT.liftF(sessions.get)
               results <-
                 if (users.contains(name)) autherRoutes(AuthedRequest(User(name), req))
-                else OptionT.liftF(Forbidden("You will not pass!!!"))
-
+                else OptionT.liftF(Forbidden("You shall not pass!!"))
             } yield results
-
-          case None => OptionT.liftF(Forbidden("You will not pass!!!"))
+          case None => OptionT.liftF(Forbidden("You shall not pass!!"))
         }
       }
-
-  val httpApp: Http[IO, IO] = service.orNotFound
-
-  val server = for {
-    //указываем эффект в котором запускаемся
-    s <- EmberServerBuilder
-      .default[IO]
-      .withPort(Port.fromInt(8080).get)
-      .withHost(Host.fromString("localhost").get)
-      .withHttpApp(httpApp).build //и билдим сервер, это ресурс
-  } yield s
-
-  val server1 = for {
-    //указываем эффект в котором запускаемся
-    s <- EmberServerBuilder
-      .default[IO]
-      .withPort(Port.fromInt(8080).get)
-      .withHost(Host.fromString("localhost").get)
-      .withHttpApp(router.orNotFound).build //и билдим сервер, это ресурс
-  } yield s
-
-  val serverSessions = for {
-    sessions <- Resource.eval(Ref.of[IO, Set[String]](Set.empty))
-    //указываем эффект в котором запускаемся
-    s <- EmberServerBuilder
-      .default[IO]
-      .withPort(Port.fromInt(8080).get)
-      .withHost(Host.fromString("localhost").get)
-      .withHttpApp(routerSessions(sessions).orNotFound).build //и билдим сервер, это ресурс
-  } yield s
-
-  val serverSessionsAuth = for {
-    sessions <- Resource.eval(Ref.of[IO, Set[String]](Set.empty))
-    //указываем эффект в котором запускаемся
-    s <- EmberServerBuilder
-      .default[IO]
-      .withPort(Port.fromInt(8080).get)
-      .withHost(Host.fromString("localhost").get)
-      .withHttpApp(routerSessionsAuth(sessions).orNotFound).build //и билдим сервер, это ресурс
-  } yield s
+  def routerSessionsAuthClear(sessions: Sessions[IO])=
+    addResponseMiddleware( Router("/" -> (loginService(sessions) <+> serviceAuthMiddleware(sessions)(serviceHelloAuth))))
 
   val serverSessionsAuthClear = for {
     sessions <- Resource.eval(Ref.of[IO, Set[String]](Set.empty))
-    //указываем эффект в котором запускаемся
     s <- EmberServerBuilder
       .default[IO]
       .withPort(Port.fromInt(8080).get)
       .withHost(Host.fromString("localhost").get)
-      .withHttpApp(routerSessionsAuthClear(sessions).orNotFound).build //и билдим сервер, это ресурс
+      .withHttpApp(routerSessionsAuthClear(sessions).orNotFound).build
   } yield s
 
 }
 
-object mainServer extends IOApp.Simple {
-  def run(): IO[Unit] = {
-    //    Restfull.server.use(_ => IO.never)
-
-    //2.
-   // Restfull.server1.use(_ => IO.never)
-   //3.
-  //  Restfull.serverSessions.use(_ => IO.never)
-    //4.
-//    Restfull.serverSessionsAuth.use(_ => IO.never)
-    //5.
+object mainServer extends IOApp.Simple{
+  def run(): IO[Unit] ={
+    //1
+    // Restfull.server.use(_ => IO.never)
+    //2
+    //Restfull.server1.use(_ => IO.never)
+    //3
+    //Restfull.serverSessions.use(_ => IO.never)
+    //4
+    //Restfull.serverSessionsAuth.use(_ => IO.never)
+    //5
     Restfull.serverSessionsAuthClear.use(_ => IO.never)
-  }
 
+  }
 }
 
-//5 тесты
-object Test extends IOApp.Simple {
+//6 tests
+object Test extends IOApp.Simple{
 
-  def run: IO[Unit] = {
+  def run: IO[Unit] ={
     val service = Restfull.serviceHelloAuth
     for {
-      result <- service(AuthedRequest(User("abc"), Request(method = Method.GET,
+      result <- service(AuthedRequest(Restfull.User("abc"), Request(method = Method.GET,
         uri = Uri.fromString("/hello").toOption.get))).value
       _ <- result match {
         case Some(resp) =>
-          resp.bodyText.compile.last.
-            flatMap(body => IO.println(resp.status.isSuccess) *>
-              IO.println(body))
-        case None => IO.println("fail")
-      }
-    } yield ()
+          ???
+        case None => ???
+      }}
+
+
+    }
+
+
+
+
   }
+
 }
 
